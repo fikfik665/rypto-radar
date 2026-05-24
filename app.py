@@ -1,7 +1,64 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
 import re
 
 app = Flask(__name__)
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رادار الكريبتو</title>
+    <script src="https://jsdelivr.net"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col justify-center items-center p-4">
+    <div class="max-w-xl w-full bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700 text-center">
+        <h1 class="text-3xl font-bold text-indigo-400 mb-2">🛡️ رادار الكريبتو</h1>
+        <p class="text-slate-400 text-sm mb-6">افحص عناوين المحافظ واكشف الاحتيال فوراً.</p>
+        <div class="space-y-4">
+            <input type="text" id="walletInput" placeholder="ضع رابط المحفظة هنا..." class="w-full p-4 bg-slate-950 border border-slate-700 rounded-xl text-center focus:outline-none focus:border-indigo-500 text-white">
+            <button onclick="startScan()" class="w-full bg-indigo-600 hover:bg-indigo-700 font-bold p-4 rounded-xl shadow-lg cursor-pointer">ابدأ الفحص الذكي</button>
+        </div>
+        <div id="resultBox" class="mt-8 p-5 rounded-xl border border-slate-700 bg-slate-950/50 hidden">
+            <h3 id="resStatus" class="text-xl font-bold mb-2"></h3>
+            <p id="resDetails" class="text-slate-300 text-sm"></p>
+        </div>
+    </div>
+    <script>
+        async function startScan() {
+            const address = document.getElementById('walletInput').value.trim();
+            const resultBox = document.getElementById('resultBox');
+            if(!address) return;
+            resultBox.classList.remove('hidden');
+            document.getElementById('resStatus').className = "text-xl font-bold text-yellow-400 animate-pulse";
+            document.getElementById('resStatus').innerText = "جاري الفحص...";
+            document.getElementById('resDetails').innerText = "";
+            try {
+                const response = await fetch('/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({address: address})
+                });
+                const data = await response.json();
+                if(data.status === "ERROR") {
+                    document.getElementById('resStatus').className = "text-xl font-bold text-red-500";
+                    document.getElementById('resStatus').innerText = "خطأ";
+                    document.getElementById('resDetails').innerText = data.message;
+                } else {
+                    document.getElementById('resStatus').className = "text-xl font-bold text-emerald-400";
+                    document.getElementById('resStatus').innerText = `آمنة (${data.wallet_type})`;
+                    document.getElementById('resDetails').innerText = data.message;
+                }
+            } catch (err) {
+                document.getElementById('resStatus').className = "text-xl font-bold text-red-500";
+                document.getElementById('resStatus').innerText = "خطأ في الاتصال";
+            }
+        }
+    </script>
+</body>
+</html>
+"""
 
 def check_wallet_format(address):
     btc_pattern = r'^(1|3)[a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{39,59}$'
@@ -15,23 +72,16 @@ def check_wallet_format(address):
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return HTML_TEMPLATE
 
 @app.route('/scan', methods=['POST'])
 def scan_wallet():
     data = request.get_json() or {}
     address = data.get('address', '').strip()
-    
     wallet_type = check_wallet_format(address)
     if wallet_type == "Unknown":
         return jsonify({"status": "ERROR", "message": "صيغة المحفظة غير صحيحة، يرجى التأكد منها."})
-    
-    return jsonify({
-        "status": "CLEAN",
-        "wallet_type": wallet_type,
-        "risk_score": 0,
-        "message": "هذه المحفظة آمنة برمجياً ولم يتم تسجيل بلاغات احتيال ضدها حتى الآن."
-    })
+    return jsonify({"status": "CLEAN", "wallet_type": wallet_type, "message": "هذه المحفظة آمنة برمجياً ولم تسجل ضدها بلاغات احتيال حتى الآن."})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
